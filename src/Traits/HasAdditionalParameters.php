@@ -11,7 +11,7 @@ trait HasAdditionalParameters
      * @param null $value
      * @return $this
      */
-    public function parameter(string|array $key, $value = null): static
+    public function setParameters(string|array $key, $value = null): static
     {
         $name = is_array($key) ? $key : [$key => $value];
 
@@ -37,7 +37,7 @@ trait HasAdditionalParameters
     /**
      * Get the value of details
      */
-    public function parameters() : array
+    public function getParameters() : array
     {
         return $this->parameters;
     }

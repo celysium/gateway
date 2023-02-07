@@ -69,7 +69,7 @@ class Payment
      * @param string $id
      * @return $this
      */
-    public function id(string $id): static
+    public function setId(string $id): static
     {
         $this->id = $id;
 
@@ -83,11 +83,8 @@ class Payment
      * @return $this
      * @throws InvalidArgumentException
      */
-    public function amount(int $amount): static
+    public function setAmount(int $amount): static
     {
-        if (!is_numeric($amount)) {
-            throw new InvalidArgumentException('Amount value should be a number.');
-        }
         $this->amount = $amount;
 
         return $this;
@@ -99,7 +96,7 @@ class Payment
      * @param string $id
      * @return $this
      */
-    public function transactionId(string $id): static
+    public function setTransactionId(string $id): static
     {
         $this->transactionId = $id;
 
@@ -113,7 +110,7 @@ class Payment
      * @return $this
      * @throws Exception
      */
-    public function via(string $driver): static
+    public function setVia(string $driver): static
     {
         $this->loadConfig($driver);
 
@@ -125,13 +122,14 @@ class Payment
      */
     private function loadConfig(string $driver = null): void
     {
-        if ($driver == null) {
-            $driver = config("payment.default");
-        }
+        $driver ??= config("payment.default");
+
         $config = config("payment.drivers.$driver");
-        if($config == null) {
+
+        if ($config == null) {
             throw new DriverNotFoundException('Driver not selected or default driver does not exist.');
         }
+
         $this->driver = $driver;
         $this->config = (object) $config;
     }
@@ -143,6 +141,7 @@ class Payment
     public function callbackUrl(string $url): static
     {
         $this->config->callbackUrl = $url;
+
         return $this;
     }
 
@@ -152,6 +151,7 @@ class Payment
     public function gateway(): RefundInterface
     {
         $gateway = $this->config['gateway'];
+
         return new $gateway($this);
     }
 }

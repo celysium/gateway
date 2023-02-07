@@ -16,6 +16,12 @@ use Celysium\Gateway\Payment;
 
 class Behpardakht implements PaymentInterface, RefundInterface
 {
+    const SUCCESS_PAYMENT = 0;
+    const INVALID_CLIENT = 21;
+    const HAD_ALREADY_VERIFY_REQUESTED = 43;
+    const SETTLED_TRANSACTION = 45;
+    const REVERSE_TRANSACTION = 48;
+
     /**
      * Behpardakht constructor.
      *
@@ -37,21 +43,8 @@ class Behpardakht implements PaymentInterface, RefundInterface
 
     public function purchase(callable $callback): PaymentInterface
     {
-        if (isset($_SERVER['SERVER_PROTOCOL']) && $_SERVER['SERVER_PROTOCOL'] == "HTTP/2.0") {
-            $context = stream_context_create(
-                [
-                    'ssl' => array(
-                        'verify_peer' => false,
-                        'verify_peer_name' => false
-                    )]
-            );
+        $soap = $this->resolveSoapClientType();
 
-            $soap = new SoapClient($this->payment->config->apiPurchaseUrl, [
-                'stream_context' => $context
-            ]);
-        } else {
-            $soap = new SoapClient($this->payment->config->apiPurchaseUrl);
-        }
         $data = [
             'terminalId' => $this->payment->config->terminalId,
             'userName' => $this->payment->config->username,
@@ -73,8 +66,8 @@ class Behpardakht implements PaymentInterface, RefundInterface
 
         $response = $soap->bpPayRequest($data);
 
-        if ($response->return == 21) {
-            throw new PurchaseFailedException($this->translateStatus('21'), 21);
+        if ($response->return == static::INVALID_CLIENT) {
+            throw new PurchaseFailedException($this->translateStatus('21'), static::INVALID_CLIENT);
         }
 
         $data = explode(',', $response->return);
@@ -88,6 +81,21 @@ class Behpardakht implements PaymentInterface, RefundInterface
         $callback($this->payment);
 
         return $this;
+    }
+
+    protected function isServerProtocolHttpTwo(): bool
+    {
+        return isset($_SERVER['SERVER_PROTOCOL']) && $_SERVER['SERVER_PROTOCOL'] == "HTTP/2.0";
+    }
+
+    protected function makeStreamContextForHttpTwo()
+    {
+        return stream_context_create([
+                'ssl' => array(
+                    'verify_peer' => false,
+                    'verify_peer_name' => false
+                )]
+        );
     }
 
     /**
@@ -137,28 +145,15 @@ class Behpardakht implements PaymentInterface, RefundInterface
             'saleReferenceId' => $this->payment->getParameter('SaleReferenceId')
         ];
 
-        if (isset($_SERVER['SERVER_PROTOCOL']) && $_SERVER['SERVER_PROTOCOL'] == "HTTP/2.0") {
-            $context = stream_context_create(
-                [
-                    'ssl' => array(
-                        'verify_peer' => false,
-                        'verify_peer_name' => false
-                    )]
-            );
-
-            $soap = new SoapClient($this->payment->config->apiPurchaseUrl, [
-                'stream_context' => $context
-            ]);
-        } else {
-            $soap = new SoapClient($this->payment->config->apiPurchaseUrl);
-        }
+        $soap = $this->resolveSoapClientType();
 
         // step1: verify request
         $verifyResponse = (int)$soap->bpVerifyRequest($data)->return;
-        if ($verifyResponse != 0) {
+
+        if ($verifyResponse != static::SUCCESS_PAYMENT) {
             // rollback money and throw exception
             // avoid rollback if request was already verified
-            if ($verifyResponse != 43) {
+            if ($verifyResponse != static::HAD_ALREADY_VERIFY_REQUESTED) {
                 $soap->bpReversalRequest($data);
             }
             throw new InvalidPaymentException($this->translateStatus($verifyResponse), $verifyResponse);
@@ -166,10 +161,10 @@ class Behpardakht implements PaymentInterface, RefundInterface
 
         // step2: settle request
         $settleResponse = $soap->bpSettleRequest($data)->return;
-        if ($settleResponse != 0) {
+        if ($settleResponse != static::SUCCESS_PAYMENT) {
             // rollback money and throw exception
             // avoid rollback if request was already settled/reversed
-            if ($settleResponse != 45 && $settleResponse != 48) {
+            if ($settleResponse != static::SETTLED_TRANSACTION && $settleResponse != static::REVERSE_TRANSACTION) {
                 $soap->bpReversalRequest($data);
             }
             throw new InvalidPaymentException($this->translateStatus($settleResponse), $settleResponse);
@@ -187,26 +182,24 @@ class Behpardakht implements PaymentInterface, RefundInterface
         return $receipt;
     }
 
+    protected function resolveSoapClientType(): SoapClient
+    {
+        if ($this->isServerProtocolHttpTwo()) {
+            return new SoapClient($this->payment->config->apiPurchaseUrl, [
+                'stream_context' => $this->makeStreamContextForHttpTwo()
+            ]);
+        }
+
+        return new SoapClient($this->payment->config->apiPurchaseUrl);
+    }
+
     /**
      * @throws SoapFault
      * @throws InvalidPaymentException
      */
     public function refund(): Receipt
     {
-        if (isset($_SERVER['SERVER_PROTOCOL']) && $_SERVER['SERVER_PROTOCOL'] == "HTTP/2.0") {
-            $context = stream_context_create(
-                [
-                    'ssl' => [
-                        'verify_peer' => false,
-                        'verify_peer_name' => false
-                    ]
-                ]
-            );
-
-            $soap = new SoapClient($this->payment->config->apiRefundUrl, ['stream_context' => $context]);
-        } else {
-            $soap = new SoapClient($this->payment->config->apiRefundUrl);
-        }
+        $soap = $this->resolveSoapClientType();
 
         $data = [
             'terminalId' => $this->payment->config->terminalId,
