@@ -13,9 +13,12 @@ class GatewayForm
      * @param array $inputs
      * @param string $method
      */
-    public function __construct(protected string $action, protected array $inputs = [], protected string $method = 'POST')
-    {
-    }
+    public function __construct(
+        protected string $action,
+        protected array $inputs = [],
+        protected string $method = 'POST'
+    )
+    {}
 
     /**
      * Retrieve default views path.
@@ -69,11 +72,7 @@ class GatewayForm
      */
     public function toArray(): array
     {
-        return [
-            'action' => $this->action,
-            'inputs' => $this->inputs,
-            'method' => $this->method,
-        ];
+        return get_object_vars($this);
     }
 
     /**
